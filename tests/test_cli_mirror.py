@@ -6,6 +6,8 @@ import socketserver
 import threading
 from pathlib import Path
 
+import yaml
+
 from sitecopy.cli import main
 
 
@@ -60,3 +62,26 @@ def test_validate_detects_missing_local_reference(tmp_path: Path) -> None:
     out.mkdir()
     (out / "index.html").write_text('<html><body><img src="missing.png"></body></html>', encoding="utf-8")
     assert main(["validate", str(out)]) == 1
+
+
+def test_init_config_writes_default_template(tmp_path: Path) -> None:
+    config = tmp_path / "sitecopy.yaml"
+
+    assert main(["init-config", str(config)]) == 0
+
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert data["root_url"] == ""
+    assert data["allowed_hosts"] == []
+    assert data["output_dir"] == "mirror"
+    assert data["rewrite_mode"] == "relative"
+    assert data["max_pages"] == 10000
+
+
+def test_init_config_does_not_overwrite_without_force(tmp_path: Path) -> None:
+    config = tmp_path / "sitecopy.yaml"
+    config.write_text("root_url: existing\n", encoding="utf-8")
+
+    assert main(["init-config", str(config)]) == 1
+    assert config.read_text(encoding="utf-8") == "root_url: existing\n"
+    assert main(["init-config", str(config), "--force"]) == 0
+    assert yaml.safe_load(config.read_text(encoding="utf-8"))["root_url"] == ""

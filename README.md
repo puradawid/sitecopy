@@ -36,6 +36,7 @@ http://127.0.0.1:8080/
 
 ```bash
 sitecopy mirror <url> [--config config.yaml] [--output-dir mirror]
+sitecopy init-config [config.yaml]
 sitecopy validate <output_dir>
 sitecopy report <output_dir>
 ```
@@ -53,7 +54,20 @@ sitecopy mirror https://example.com \
 
 ## Configuration
 
-Use `examples/config.yaml` as a starting point:
+Create an editable default config:
+
+```bash
+sitecopy init-config config.yaml
+```
+
+`init-config` writes a default editable config file. It refuses to overwrite an
+existing file unless `--force` is passed:
+
+```bash
+sitecopy init-config config.yaml --force
+```
+
+You can also use `examples/config.yaml` as a starting point:
 
 ```bash
 sitecopy mirror --config examples/config.yaml
@@ -81,6 +95,69 @@ mirror/
     assets/
       logo.png
 ```
+
+## Multi-Host Mirrors
+
+`sitecopy` can mirror more than one host in a single crawl when those hosts are
+allowed by configuration and are reachable from the starting URL.
+
+For example, if `www1.puradawid.pro` links to `www2.puradawid.pro`, and you want
+both hosts downloaded with local links between them working, use a config like:
+
+```yaml
+root_url: "https://www1.puradawid.pro/"
+output_dir: "./mirror"
+allowed_hosts:
+  - "www1.puradawid.pro"
+  - "www2.puradawid.pro"
+follow_subdomains: false
+rewrite_mode: "relative"
+```
+
+Run:
+
+```bash
+sitecopy mirror --config config.yaml
+```
+
+The output is separated by host:
+
+```text
+mirror/
+  manifest.sqlite
+  report.json
+  www1.puradawid.pro/
+    index.html
+  www2.puradawid.pro/
+    index.html
+```
+
+Serve the whole output directory, not just one host directory:
+
+```bash
+python -m http.server 8080 --directory mirror
+```
+
+Open the mirrored entry host through its local host directory:
+
+```text
+http://127.0.0.1:8080/www1.puradawid.pro/
+```
+
+With the default relative rewrite mode, links from files under
+`www1.puradawid.pro/` to downloaded files under `www2.puradawid.pro/` are
+rewritten as local relative paths, so they work as long as the whole `mirror/`
+directory is served.
+
+Important limitations:
+
+- The crawl still has one `root_url`. Other allowed hosts are fetched only if
+  they are discovered from that root through links or asset references.
+- This is multi-host local mirroring, not local virtual-host emulation. Local
+  URLs include the host directory name, such as `/www1.puradawid.pro/`.
+- For multi-host browsing, keep `rewrite_mode: "relative"` unless you
+  specifically want output-root-relative links such as
+  `/www2.puradawid.pro/page/index.html`.
 
 ## Reports
 

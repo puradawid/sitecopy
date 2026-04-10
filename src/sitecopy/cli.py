@@ -4,7 +4,11 @@ import argparse
 import json
 import logging
 import sys
+from dataclasses import MISSING, fields
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from .config import Config
 from .crawler import Crawler
@@ -32,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
 
     report = sub.add_parser("report", help="Print report.json")
     report.add_argument("output_dir")
+
+    init_config = sub.add_parser("init-config", help="Create a default config file")
+    init_config.add_argument("path", nargs="?", default="config.yaml")
+    init_config.add_argument("--force", action="store_true", help="Overwrite an existing config file")
 
     args = parser.parse_args(argv)
     if args.command == "mirror":
@@ -62,7 +70,34 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(path.read_text(encoding="utf-8"))
         return 0
+    if args.command == "init-config":
+        path = Path(args.path)
+        if path.exists() and not args.force:
+            print(f"config already exists: {path} (use --force to overwrite)", file=sys.stderr)
+            return 1
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(_default_config_template(), sort_keys=False), encoding="utf-8")
+        print(f"created config: {path}")
+        return 0
     return 1
+
+
+def _default_config_template() -> dict[str, Any]:
+    template: dict[str, Any] = {}
+    for item in fields(Config):
+        if item.name == "root_url":
+            template[item.name] = ""
+        elif item.default is not MISSING:
+            template[item.name] = _config_value(item.default)
+        elif item.default_factory is not MISSING:
+            template[item.name] = _config_value(item.default_factory())
+    return template
+
+
+def _config_value(value: Any) -> Any:
+    if isinstance(value, Path):
+        return value.as_posix()
+    return value
 
 
 def _setup_logging(level: str) -> None:
