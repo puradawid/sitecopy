@@ -1,0 +1,18 @@
+root_url: "https://example.com"
+allowed_hosts:
+  - "example.com"
+excluded_hosts: []
+follow_subdomains: false
+treat_http_https_as_same_host: true
+max_depth: null
+max_pages: 10000
+max_assets: null
+output_dir: "./mirror"
+respect_robots_txt: false
+concurrency: 8
+request_timeout_seconds: 20
+retry_count: 2
+rewrite_mode: "relative"
+download_external_assets: false
+keep_query_string_variants: true
+resume: true

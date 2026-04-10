@@ -1,0 +1,13 @@
+.deps/
+.venv/
+.codex
+__pycache__/
+.pytest_cache/
+*.pyc
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+mirror/
+puradawid.pro/

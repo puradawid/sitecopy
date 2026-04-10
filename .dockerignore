@@ -1,0 +1,12 @@
+.git/
+.codex/
+.deps/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+puradawid.pro/
+mirror/
+dist/
+build/
+*.egg-info/
