@@ -9,6 +9,9 @@ from pathlib import Path
 import yaml
 
 from sitecopy.cli import main
+from sitecopy.config import Config
+from sitecopy.crawler import Crawler
+from sitecopy.fetch import FetchResult
 
 
 class ReusableTCPServer(socketserver.TCPServer):
@@ -85,3 +88,129 @@ def test_init_config_does_not_overwrite_without_force(tmp_path: Path) -> None:
     assert config.read_text(encoding="utf-8") == "root_url: existing\n"
     assert main(["init-config", str(config), "--force"]) == 0
     assert yaml.safe_load(config.read_text(encoding="utf-8"))["root_url"] == ""
+
+
+class FakeFetcher:
+    def __init__(self, responses: dict[str, FetchResult]) -> None:
+        self.responses = responses
+
+    def fetch(self, url: str) -> FetchResult:
+        return self.responses[url]
+
+    def close(self) -> None:
+        return None
+
+
+def test_mirror_leaves_www_link_absolute_when_only_apex_host_is_allowed(tmp_path: Path) -> None:
+    out = tmp_path / "mirror"
+    cfg = Config(
+        root_url="https://target.org/",
+        output_dir=out,
+        allowed_hosts=["target.org"],
+        max_pages=10,
+        resume=False,
+    )
+    cfg.validate()
+    crawler = Crawler(cfg)
+    crawler.fetcher = FakeFetcher(
+        {
+            "https://target.org/": FetchResult(
+                url="https://target.org/",
+                final_url="https://target.org/",
+                status_code=200,
+                content_type="text/html",
+                body=b'<html><body><a href="https://www.target.org/about">About</a></body></html>',
+                redirect_chain=["https://target.org/"],
+            ),
+        }
+    )
+
+    report = crawler.run()
+
+    index = (out / "target.org" / "index.html").read_text(encoding="utf-8")
+    assert 'href="https://www.target.org/about"' in index
+    assert not (out / "www.target.org" / "about" / "index.html").exists()
+    assert report["pages_downloaded"] == 1
+    assert report["skipped_external"] == 1
+
+
+def test_mirror_rewrites_link_between_explicitly_allowed_hosts(tmp_path: Path) -> None:
+    out = tmp_path / "mirror"
+    cfg = Config(
+        root_url="https://www.target.org/",
+        output_dir=out,
+        allowed_hosts=["www.target.org", "target.org"],
+        follow_subdomains=False,
+        max_pages=10,
+        resume=False,
+    )
+    cfg.validate()
+    crawler = Crawler(cfg)
+    crawler.fetcher = FakeFetcher(
+        {
+            "https://www.target.org/": FetchResult(
+                url="https://www.target.org/",
+                final_url="https://www.target.org/",
+                status_code=200,
+                content_type="text/html",
+                body=b'<html><body><a href="https://target.org/about">About</a></body></html>',
+                redirect_chain=["https://www.target.org/"],
+            ),
+            "https://target.org/about": FetchResult(
+                url="https://target.org/about",
+                final_url="https://target.org/about",
+                status_code=200,
+                content_type="text/html",
+                body=b"<html><body>About</body></html>",
+                redirect_chain=["https://target.org/about"],
+            ),
+        }
+    )
+
+    report = crawler.run()
+
+    index = (out / "www.target.org" / "index.html").read_text(encoding="utf-8")
+    assert 'href="../target.org/about/index.html"' in index
+    assert (out / "target.org" / "about" / "index.html").exists()
+    assert report["pages_downloaded"] == 2
+
+
+def test_mirror_rewrites_links_across_allowed_hosts_with_redirects(tmp_path: Path) -> None:
+    out = tmp_path / "mirror"
+    cfg = Config(
+        root_url="https://kali.org/",
+        output_dir=out,
+        allowed_hosts=["www.kali.org", "kali.org"],
+        follow_subdomains=False,
+        max_pages=10,
+        resume=False,
+    )
+    cfg.validate()
+    crawler = Crawler(cfg)
+    crawler.fetcher = FakeFetcher(
+        {
+            "https://kali.org/": FetchResult(
+                url="https://kali.org/",
+                final_url="https://www.kali.org/",
+                status_code=200,
+                content_type="text/html",
+                body=b'<html><body><a href="https://kali.org/docs">Docs</a></body></html>',
+                redirect_chain=["https://kali.org/", "https://www.kali.org/"],
+            ),
+            "https://kali.org/docs": FetchResult(
+                url="https://kali.org/docs",
+                final_url="https://www.kali.org/docs",
+                status_code=200,
+                content_type="text/html",
+                body=b"<html><body>Docs</body></html>",
+                redirect_chain=["https://kali.org/docs", "https://www.kali.org/docs"],
+            ),
+        }
+    )
+
+    report = crawler.run()
+
+    index = (out / "www.kali.org" / "index.html").read_text(encoding="utf-8")
+    assert 'href="docs/index.html"' in index
+    assert (out / "www.kali.org" / "docs" / "index.html").exists()
+    assert report["pages_downloaded"] == 2

@@ -1,4 +1,6 @@
 from sitecopy.canonicalize import canonicalize
+from sitecopy.config import Config
+from sitecopy.policy import is_allowed_url
 
 
 def test_canonical_identity_strips_fragment_and_normalizes_case() -> None:
@@ -23,3 +25,13 @@ def test_query_variant_can_be_collapsed() -> None:
     assert a is not None
     assert b is not None
     assert a.identity == b.identity
+
+
+def test_allowed_host_does_not_treat_www_alias_as_same_host() -> None:
+    cfg = Config(root_url="https://target.org/", allowed_hosts=["target.org"])
+    cfg.validate()
+
+    allowed, reason = is_allowed_url("https://www.target.org/about", cfg)
+
+    assert allowed is False
+    assert reason == "external_host"

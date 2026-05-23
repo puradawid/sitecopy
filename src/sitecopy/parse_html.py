@@ -63,6 +63,7 @@ def rewrite(body: bytes, resolver) -> bytes:
                     new = resolver(value)
                     if new != value:
                         el.set(attr, new)
+    _ensure_utf8_charset(doc)
     return html.tostring(doc, encoding="utf-8", method="html", doctype=None)
 
 
@@ -74,3 +75,22 @@ def parse_srcset(value: str) -> list[tuple[str, str]]:
             continue
         refs.append((tokens[0], tokens[1] if len(tokens) > 1 else ""))
     return refs
+
+
+def _ensure_utf8_charset(doc) -> None:
+    head = doc.find(".//head")
+    if head is None:
+        html_el = doc if doc.tag == "html" else doc.find(".//html")
+        if html_el is None:
+            return
+        head = html.Element("head")
+        html_el.insert(0, head)
+    for meta in list(head.findall("meta")):
+        if meta.get("charset"):
+            head.remove(meta)
+            continue
+        http_equiv = (meta.get("http-equiv") or "").strip().lower()
+        content = (meta.get("content") or "").lower()
+        if http_equiv == "content-type" and "charset=" in content:
+            head.remove(meta)
+    head.insert(0, html.Element("meta", charset="utf-8"))
